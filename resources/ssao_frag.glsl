@@ -11,6 +11,9 @@ uniform sampler2D sceneColorTex;
 uniform sampler2D sceneNormalsTex;
 uniform sampler2D sceneDepthTex;
 
+/* Gives us a linear mapping of depth values from 0.0 to 1.0 */
+/* Useful for debug visualization of depths - otherwise it's hard */
+/* to see anything not close to the near plane */
 float linearizeDepth(in float depth)
 {
 	float zNear = 0.1;
@@ -92,10 +95,7 @@ void main()
 		float occlusion = calculateOcclusion(normal);
 
 		color.rgb = vec3(occlusion);
-
-		vec2 noiseScale = vec2(textureSize(sceneDepthTex, 0)) / textureSize(noiseTex, 0);
-		// color.rg = texture(noiseTex, texCoord * noiseScale).xy;
-		// color.rg = texture(noiseTex, texCoord).xy;
+		color.rgb = texture(sceneColorTex, texCoord).rgb * occlusion;
 	}
 	if (uMode == 1) // Color pass-thru
 	{

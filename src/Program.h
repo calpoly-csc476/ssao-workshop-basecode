@@ -27,6 +27,7 @@ public:
 
 	void addAttribute(const std::string &name);
 	void addUniform(const std::string &name);
+	bool isAttribute(const std::string &name) const;
 	GLint getAttribute(const std::string &name) const;
 	GLint getUniform(const std::string &name) const;
 

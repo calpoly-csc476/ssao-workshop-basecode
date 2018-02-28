@@ -115,6 +115,11 @@ void Program::addUniform(const std::string &name)
 	uniforms[name] = GLSL::getUniformLocation(pid, name.c_str(), isVerbose());
 }
 
+bool Program::isAttribute(const std::string & name) const
+{
+	return attributes.find(name.c_str()) != attributes.end();
+}
+
 GLint Program::getAttribute(const std::string &name) const
 {
 	std::map<std::string, GLint>::const_iterator attribute = attributes.find(name.c_str());

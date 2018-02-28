@@ -164,7 +164,7 @@ void Shape::draw(const shared_ptr<Program> prog) const
 		glVertexAttribPointer(h_nor, 3, GL_FLOAT, GL_FALSE, 0, (const void *)0);
 	}
 
-	if (texBufID != 0)
+	if (texBufID != 0 && prog->isAttribute("vertTex"))
 	{
 		// Bind texcoords buffer
 		h_tex = prog->getAttribute("vertTex");

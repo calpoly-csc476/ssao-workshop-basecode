@@ -46,11 +46,6 @@ public:
 	shared_ptr<Shape> world;
 	shared_ptr<Shape> shape;
 
-	// Textures
-	shared_ptr<Texture> texture0;
-	shared_ptr<Texture> texture1;
-	shared_ptr<Texture> texture2;
-
 	// Debug Settings
 	bool ShowSceneColor = false;
 	bool ShowSceneNormals = false;
@@ -237,20 +232,12 @@ public:
 			0, 1, 0,
 		};
 
-		const float GrndTex[] =
-		{
-			0, 0, // back
-			0, 1,
-			1, 1,
-			1, 0,
-		};
-
 		unsigned short idx[] = { 0, 1, 2, 0, 2, 3 };
 
 		CHECKED_GL_CALL(glGenVertexArrays(1, &GroundVertexArray));
 		CHECKED_GL_CALL(glBindVertexArray(GroundVertexArray));
 
-		GLuint GroundPositionBuffer, GroundNormalBuffer, GroundTexCoordBuffer, GroundIndexBuffer;
+		GLuint GroundPositionBuffer, GroundNormalBuffer, GroundIndexBuffer;
 
 		CHECKED_GL_CALL(glGenBuffers(1, &GroundPositionBuffer));
 		CHECKED_GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, GroundPositionBuffer));
@@ -263,12 +250,6 @@ public:
 		CHECKED_GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(GrndNorm), GrndNorm, GL_STATIC_DRAW));
 		CHECKED_GL_CALL(glEnableVertexAttribArray(1));
 		CHECKED_GL_CALL(glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0));
-
-		CHECKED_GL_CALL(glGenBuffers(1, &GroundTexCoordBuffer));
-		CHECKED_GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, GroundTexCoordBuffer));
-		CHECKED_GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(GrndTex), GrndTex, GL_STATIC_DRAW));
-		CHECKED_GL_CALL(glEnableVertexAttribArray(2));
-		CHECKED_GL_CALL(glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, 0));
 
 		GroundIndexCount = 6;
 		CHECKED_GL_CALL(glGenBuffers(1, &GroundIndexBuffer));
@@ -447,32 +428,13 @@ public:
 		// Intialize textures //
 		////////////////////////
 
-		texture0 = make_shared<Texture>();
-		texture0->setFilename(RESOURCE_DIR + "crate.jpg");
-		texture0->init();
-		texture0->setUnit(0);
-		texture0->setWrapModes(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-
-		texture1 = make_shared<Texture>();
-		texture1->setFilename(RESOURCE_DIR + "world.jpg");
-		texture1->init();
-		texture1->setUnit(0);
-		texture1->setWrapModes(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-
-		texture2 = make_shared<Texture>();
-		texture2->setFilename(RESOURCE_DIR + "grass.jpg");
-		texture2->init();
-		texture2->setUnit(0);
-		texture2->setWrapModes(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
-
 		SceneProg->addUniform("P");
 		SceneProg->addUniform("M");
 		SceneProg->addUniform("V");
 		SceneProg->addUniform("lightDir");
 		SceneProg->addAttribute("vertPos");
 		SceneProg->addAttribute("vertNor");
-		SceneProg->addAttribute("vertTex");
-		SceneProg->addUniform("Texture0");
+		SceneProg->addUniform("materialColor");
 
 		SSAOProg->addUniform("sceneColorTex");
 		SSAOProg->addUniform("sceneNormalsTex");
@@ -523,7 +485,7 @@ public:
 
 		// Noise texture
 		vector<float> NoiseData;
-		uint const NoiseTexSize = 64;
+		uint const NoiseTexSize = 4;
 		for (uint i = 0; i < NoiseTexSize * NoiseTexSize; i++)
 		{
 			NoiseData.push_back(randomFloats(generator) * 2 - 1);
@@ -580,24 +542,22 @@ public:
 
 	/*
 	Draw the dog, sphere and ground plane
-	Textures can be turned on an off (as shadow map depth drawing does not need textures)
 	*/
-	void drawScene(shared_ptr<Program> shader, GLint texID)
+	void drawScene(shared_ptr<Program> shader)
 	{
-		texture0->bind(texID);
 		//draw the dog mesh
 		SetModel(vec3(-1, 0, -5), 0, 0, 1, shader);
+		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.8f, 0.2f, 0.2f));
 		shape->draw(shader);
 
-		texture1->bind(texID);
 		//draw the world sphere
 		SetModel(vec3(1, 0, -5), 0, 0, 1, shader);
+		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.2f, 0.2f, 0.8f));
 		world->draw(shader);
-
-		texture2->bind(texID);
 
 		//draw the ground plane
 		SetModel(vec3(0, -1, 0), 0, 0, 1, shader);
+		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.2f, 0.8f, 0.2f));
 		CHECKED_GL_CALL(glBindVertexArray(GroundVertexArray));
 		CHECKED_GL_CALL(glDrawElements(GL_TRIANGLES, GroundIndexCount, GL_UNSIGNED_SHORT, 0));
 		CHECKED_GL_CALL(glBindVertexArray(0));
@@ -644,7 +604,7 @@ public:
 		SetProjectionMatrix(SceneProg);
 		SetView(SceneProg);
 
-		drawScene(SceneProg, SceneProg->getUniform("Texture0"));
+		drawScene(SceneProg);
 		SceneProg->unbind();
 
 
