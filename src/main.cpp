@@ -306,7 +306,7 @@ public:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
 	}
 
-	// set up the FBO for the light's depth
+	// set up the FBO for GBuffer (scene colors, normals, and a depth texture)
 	void initGBuffer()
 	{
 		// generate the FBO for the shadow depth
@@ -461,28 +461,30 @@ public:
 		initSSAOKernel();
 	}
 
+	// simple linear interpolation helper function
 	static float lerp(float const a, float const b, float const f)
 	{
 		return a + f * (b - a);
 	}
 
+	// set up two sources of randomness for our SSAO implementation:
+	// 1) A set of random sample vectors within a unit hemisphere oriented +Z
+	// 2) A set of random 2D vectors that can be used to randomly rotate the hemisphere once aligned along the normal
 	void initSSAOKernel()
 	{
 		std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
 		std::default_random_engine generator;
 
-		// Sample kernel
-		int const numSamples = 64;
+		// Sample kernel - random vectors within unit hemisphere
+		int const numSamples = 64; // If you change this, you must update the shader as well!
 		for (uint i = 0; i < numSamples; ++i)
 		{
-			float const VerticalBias = 0.1f;
-
-
 			float const a = randomFloats(generator);
 			float const b = randomFloats(generator);
 			float const c = randomFloats(generator);
 
-			vec3 sample = vec3(a * 2 - 1, b * 2 - 1, c * (1.f - VerticalBias) + VerticalBias);
+			float const VerticalBias = 0.1f;
+			vec3 sample = vec3(a * 2 - 1, b * 2 - 1, c * (1 - VerticalBias) + VerticalBias);
 			sample = normalize(sample);
 			sample *= randomFloats(generator);
 
@@ -495,7 +497,7 @@ public:
 			ssaoKernel.push_back(sample.z);
 		}
 
-		// Noise texture
+		// Noise texture - random vec2s for hemisphere orientation
 		vector<float> NoiseData;
 		uint const NoiseTexSize = 4;
 		for (uint i = 0; i < NoiseTexSize * NoiseTexSize; i++)
@@ -526,14 +528,12 @@ public:
 		CHECKED_GL_CALL(glUniformMatrix4fv(curShade->getUniform("P"), 1, GL_FALSE, value_ptr(Projection)));
 	}
 
-	/* camera controls - do not change */
 	void SetView(shared_ptr<Program> curShade)
 	{
 		mat4 Cam = glm::lookAt(cameraPos, cameraLookAt, vec3(0, 1, 0));
 		CHECKED_GL_CALL(glUniformMatrix4fv(curShade->getUniform("V"), 1, GL_FALSE, value_ptr(Cam)));
 	}
 
-	/* model transforms */
 	void SetModel(vec3 trans, float rotY, float sc, shared_ptr<Program> curS)
 	{
 		mat4 Trans = glm::translate(glm::mat4(1.0f), trans);
@@ -543,48 +543,50 @@ public:
 		CHECKED_GL_CALL(glUniformMatrix4fv(curS->getUniform("M"), 1, GL_FALSE, value_ptr(ctm)));
 	}
 
-	void SetModel(mat4 ctm, shared_ptr<Program> curS)
-	{
-		CHECKED_GL_CALL(glUniformMatrix4fv(curS->getUniform("M"), 1, GL_FALSE, value_ptr(ctm)));
-	}
-
 
 
 	////////////
 	// Render //
 	////////////
 
-	/*
-	Draw the dog, sphere and ground plane
-	*/
-	void drawScene(shared_ptr<Program> shader)
+	// Draw the dog, sphere, dragon, and stairs and ground plane
+	void DrawScene()
 	{
-		//draw the dog mesh
-		SetModel(vec3(-1, -0.75f, 0), 0, 1, shader);
-		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.8f, 0.2f, 0.2f));
-		dog->draw(shader);
+		SceneProg->bind();
 
-		//draw the world sphere
-		SetModel(vec3(1, -1, 0), 0, 1, shader);
-		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.2f, 0.2f, 0.8f));
-		sphere->draw(shader);
+		SetProjectionMatrix(SceneProg);
+		SetView(SceneProg);
 
-		//draw the dragon mesh
-		SetModel(vec3(-1, 0.5f, -4), radians(90.f), 3, shader);
-		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.2f, 0.8f, 0.8f));
-		dragon->draw(shader);
+		CHECKED_GL_CALL(glUniform3f(SceneProg->getUniform("lightDir"), g_light.x, g_light.y, g_light.z));
 
-		//draw the stairs sphere
-		SetModel(vec3(1, 1, -9), radians(180.f), 3, shader);
-		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.8f, 0.6f, 0.2f));
-		stairs->draw(shader);
+		// draw the dog mesh
+		SetModel(vec3(-1, -0.75f, 0), 0, 1, SceneProg);
+		CHECKED_GL_CALL(glUniform3f(SceneProg->getUniform("materialColor"), 0.8f, 0.2f, 0.2f));
+		dog->draw(SceneProg);
 
-		//draw the ground plane
-		SetModel(vec3(0, 0, 0), 0, 1, shader);
-		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.2f, 0.8f, 0.2f));
+		// draw the sphere mesh
+		SetModel(vec3(1, -1, 0), 0, 1, SceneProg);
+		CHECKED_GL_CALL(glUniform3f(SceneProg->getUniform("materialColor"), 0.2f, 0.2f, 0.8f));
+		sphere->draw(SceneProg);
+
+		// draw the dragon mesh
+		SetModel(vec3(-1, 0.5f, -4), radians(90.f), 3, SceneProg);
+		CHECKED_GL_CALL(glUniform3f(SceneProg->getUniform("materialColor"), 0.2f, 0.8f, 0.8f));
+		dragon->draw(SceneProg);
+
+		// draw the stairs mesh
+		SetModel(vec3(1, 1, -9), radians(180.f), 3, SceneProg);
+		CHECKED_GL_CALL(glUniform3f(SceneProg->getUniform("materialColor"), 0.8f, 0.6f, 0.2f));
+		stairs->draw(SceneProg);
+
+		// draw the ground plane
+		SetModel(vec3(0, 0, 0), 0, 1, SceneProg);
+		CHECKED_GL_CALL(glUniform3f(SceneProg->getUniform("materialColor"), 0.2f, 0.8f, 0.2f));
 		CHECKED_GL_CALL(glBindVertexArray(GroundVertexArray));
 		CHECKED_GL_CALL(glDrawElements(GL_TRIANGLES, GroundIndexCount, GL_UNSIGNED_SHORT, 0));
 		CHECKED_GL_CALL(glBindVertexArray(0));
+
+		SceneProg->unbind();
 	}
 
 	void UpdateCamera()
@@ -616,24 +618,16 @@ public:
 		UpdateCamera();
 
 
-		// now render the scene like normal
+		// First render the scene into the gbuffer
+
 		CHECKED_GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, SceneFBO));
 		CHECKED_GL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
-
-		SceneProg->bind();
-
-		CHECKED_GL_CALL(glUniform3f(SceneProg->getUniform("lightDir"), g_light.x, g_light.y, g_light.z));
-
-		SetProjectionMatrix(SceneProg);
-		SetView(SceneProg);
-
-		drawScene(SceneProg);
-		SceneProg->unbind();
+		DrawScene();
 
 
-		/* code to draw the light depth buffer */
-		// actually draw the light depth map
+		// Now do the SSAO pass - copy gbuffer values to screen + plus do SSAO calculation
+
 		CHECKED_GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
 		CHECKED_GL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
@@ -653,7 +647,6 @@ public:
 		CHECKED_GL_CALL(glActiveTexture(GL_TEXTURE3));
 		CHECKED_GL_CALL(glBindTexture(GL_TEXTURE_2D, SSAONoiseTexture));
 		CHECKED_GL_CALL(glUniform1i(SSAOProg->getUniform("noiseTex"), 3));
-
 
 		int PassMode = 0;
 
@@ -684,7 +677,6 @@ public:
 
 int main(int argc, char **argv)
 {
-	// Where the resources are loaded from
 	std::string resourceDir = "../resources/";
 
 	if (argc >= 2)
@@ -694,33 +686,21 @@ int main(int argc, char **argv)
 
 	Application *application = new Application();
 
-	// Your main will always include a similar set up to establish your window
-	// and GL context, etc.
-
 	WindowManager *windowManager = new WindowManager();
 	windowManager->init(1024, 768);
 	windowManager->setEventCallbacks(application);
 	application->windowManager = windowManager;
 
-	// This is the code that will likely change program to program as you
-	// may need to initialize or set up different data and state
-
 	application->init(resourceDir);
 	application->initGeom();
 
-	// Loop until the user closes the window.
 	while (! glfwWindowShouldClose(windowManager->getHandle()))
 	{
-		// Render scene.
 		application->render();
-
-		// Swap front and back buffers.
 		glfwSwapBuffers(windowManager->getHandle());
-		// Poll for and process events.
 		glfwPollEvents();
 	}
 
-	// Quit program.
 	windowManager->shutdown();
 	return 0;
 }
