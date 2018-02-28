@@ -38,10 +38,8 @@ public:
 	WindowManager * windowManager = nullptr;
 
 	// Shaders
-	shared_ptr<Program> DepthProg;
-	shared_ptr<Program> DepthProgDebug;
-	shared_ptr<Program> ShadowProg;
-	shared_ptr<Program> DebugProg;
+	shared_ptr<Program> SceneProg;
+	shared_ptr<Program> SSAOProg;
 
 	// Shapes
 	shared_ptr<Shape> world;
@@ -53,14 +51,17 @@ public:
 	shared_ptr<Texture> texture2;
 
 	// Debug Settings
-	bool SHOW_LIGHT_COLOR = false;
-	bool SHOW_LIGHT_DEPTH = false;
+	bool ShowSceneNormals = false;
+	bool ShowSceneDepth = false;
 
-	GLuint ShadowMapFBO;
-	const GLuint ShadowMapWidth = 1024, ShadowMapHeight = 1024;
-	GLuint ShadowMapDepthTexture;
+	GLuint SceneFBO;
+	GLuint SceneColorTexture;
+	GLuint SceneNormalsTexture;
+	GLuint SceneDepthTexture;
 
 	glm::vec3 g_light = glm::vec3(1, 1, 1);
+	int g_width = -1;
+	int g_height = -1;
 
 	// Ground Plane vertex data
 	GLuint GroundVertexArray;
@@ -143,10 +144,10 @@ public:
 			break;
 
 		case GLFW_KEY_K:
-			SHOW_LIGHT_COLOR = (action != GLFW_RELEASE);
+			ShowSceneNormals = (action != GLFW_RELEASE);
 			break;
 		case GLFW_KEY_L:
-			SHOW_LIGHT_DEPTH = (action != GLFW_RELEASE);
+			ShowSceneDepth = (action != GLFW_RELEASE);
 			break;
 		};
 
@@ -186,6 +187,8 @@ public:
 
 	void resizeCallback(GLFWwindow* window, int w, int h)
 	{
+		CHECKED_GL_CALL(glViewport(0, 0, g_width = w, g_height = h));
+		setGBufferTextureSize(g_width, g_height);
 	}
 
 
@@ -300,34 +303,103 @@ public:
 	// Setup //
 	///////////
 
+	void setGBufferTextureSize(const int width, const int height)
+	{
+		glBindTexture(GL_TEXTURE_2D, SceneColorTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+
+		glBindTexture(GL_TEXTURE_2D, SceneNormalsTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+
+		glBindTexture(GL_TEXTURE_2D, SceneDepthTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+	}
+
 	// set up the FBO for the light's depth
-	void initShadow()
+	void initGBuffer()
 	{
 		// generate the FBO for the shadow depth
-		glGenFramebuffers(1, &ShadowMapFBO);
+		glGenFramebuffers(1, &SceneFBO);
 
-		// generate the texture
-		glGenTextures(1, &ShadowMapDepthTexture);
-		glBindTexture(GL_TEXTURE_2D, ShadowMapDepthTexture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, ShadowMapWidth, ShadowMapHeight,
-			0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-
+		// generate the color texture
+		glGenTextures(1, &SceneColorTexture);
+		glBindTexture(GL_TEXTURE_2D, SceneColorTexture);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+		// generate the normals texture
+		glGenTextures(1, &SceneNormalsTexture);
+		glBindTexture(GL_TEXTURE_2D, SceneNormalsTexture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+		// generate the depth texture
+		glGenTextures(1, &SceneDepthTexture);
+		glBindTexture(GL_TEXTURE_2D, SceneDepthTexture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+		setGBufferTextureSize(g_width, g_height);
 
 		// bind with framebuffer's depth buffer
-		glBindFramebuffer(GL_FRAMEBUFFER, ShadowMapFBO);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ShadowMapDepthTexture, 0);
-		glDrawBuffer(GL_NONE);
-		glReadBuffer(GL_NONE);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, SceneFBO);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, SceneColorTexture, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, SceneNormalsTexture, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, SceneDepthTexture, 0);
+
+		const GLenum drawBuffers[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+		glDrawBuffers(2, drawBuffers);
+
+		uint Status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+		if (Status != GL_FRAMEBUFFER_COMPLETE)
+		{
+			cerr << "Failed to properly create framebuffer!" << endl;
+
+			string Problem;
+			switch (Status)
+			{
+			case GL_FRAMEBUFFER_UNDEFINED:
+				Problem = "Undefined - the specified framebuffer is the default read or draw framebuffer, but the default framebuffer does not exist.";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+				Problem = "Incomplete attachment - one or more of the framebuffer attachment points are framebuffer incomplete.";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+				Problem = "Incomplete missing attachment - the framebuffer does not have at least one image attached to it.";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
+				Problem = "Incomplete draw buffer - the value of GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE is GL_NONE for one or more color attachment point(s) named by GL_DRAW_BUFFERi.";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
+				Problem = "Incomplete read buffer - GL_READ_BUFFER is not GL_NONE and the value of GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE is GL_NONE for the color attachment point named by GL_READ_BUFFER.";
+				break;
+			case GL_FRAMEBUFFER_UNSUPPORTED:
+				Problem = "Unsupported - the combination of internal formats of the attached images violates an implementation-dependent set of restrictions.";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+				Problem = "Incomplete multisample.";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS:
+				Problem = "Incomplete layer targets - one or more framebuffer attachments is layered, and one or more populated attachment is not layered, or all populated color attachments are not from textures of the same target.";
+				break;
+			default:
+				Problem = "Unknown.";
+				break;
+			}
+
+			cerr << "Framebuffer problem: " << Problem << endl;
+			exit(1);
+		}
+
+		CHECKED_GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
 	}
 
 	void init(string const & RESOURCE_DIR)
 	{
 		GLSL::checkVersion();
+
+		glfwGetFramebufferSize(windowManager->getHandle(), &g_width, &g_height);
 
 		// Set background color
 		glClearColor(0.5f, 0.5f, 1.0f, 1.0f);
@@ -346,25 +418,16 @@ public:
 		world->init();
 
 		// Initialize the GLSL programs
-		DepthProg = make_shared<Program>();
-		DepthProg->setVerbose(true);
-		DepthProg->setShaderNames(RESOURCE_DIR + "depth_vert.glsl", RESOURCE_DIR + "depth_frag.glsl");
-		DepthProg->init();
 
-		DepthProgDebug = make_shared<Program>();
-		DepthProgDebug->setVerbose(true);
-		DepthProgDebug->setShaderNames(RESOURCE_DIR + "depth_vertDebug.glsl", RESOURCE_DIR + "depth_fragDebug.glsl");
-		DepthProgDebug->init();
+		SceneProg = make_shared<Program>();
+		SceneProg->setVerbose(true);
+		SceneProg->setShaderNames(RESOURCE_DIR + "scene_vert.glsl", RESOURCE_DIR + "scene_frag.glsl");
+		SceneProg->init();
 
-		ShadowProg = make_shared<Program>();
-		ShadowProg->setVerbose(true);
-		ShadowProg->setShaderNames(RESOURCE_DIR + "shadow_vert.glsl", RESOURCE_DIR + "shadow_frag.glsl");
-		ShadowProg->init();
-
-		DebugProg = make_shared<Program>();
-		DebugProg->setVerbose(true);
-		DebugProg->setShaderNames(RESOURCE_DIR + "pass_vert.glsl", RESOURCE_DIR + "pass_texfrag.glsl");
-		DebugProg->init();
+		SSAOProg = make_shared<Program>();
+		SSAOProg->setVerbose(true);
+		SSAOProg->setShaderNames(RESOURCE_DIR + "ssao_vert.glsl", RESOURCE_DIR + "ssao_frag.glsl");
+		SSAOProg->init();
 
 		////////////////////////
 		// Intialize textures //
@@ -388,39 +451,22 @@ public:
 		texture2->setUnit(0);
 		texture2->setWrapModes(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
 
-		// Add uniform and attributes to each of the programs
-		DepthProg->addUniform("LP");
-		DepthProg->addUniform("LV");
-		DepthProg->addUniform("M");
-		DepthProg->addAttribute("vertPos");
-		// un-needed, but easier then modifying shape
-		DepthProg->addAttribute("vertNor");
-		DepthProg->addAttribute("vertTex");
+		SceneProg->addUniform("P");
+		SceneProg->addUniform("M");
+		SceneProg->addUniform("V");
+		SceneProg->addUniform("lightDir");
+		SceneProg->addAttribute("vertPos");
+		SceneProg->addAttribute("vertNor");
+		SceneProg->addAttribute("vertTex");
+		SceneProg->addUniform("Texture0");
 
-		DepthProgDebug->addUniform("LP");
-		DepthProgDebug->addUniform("LV");
-		DepthProgDebug->addUniform("M");
-		DepthProgDebug->addAttribute("vertPos");
-		// un-needed, but easier then modifying shape
-		DepthProgDebug->addAttribute("vertNor");
-		DepthProgDebug->addAttribute("vertTex");
-		DepthProgDebug->addUniform("Texture0");
+		SSAOProg->addUniform("sceneColorTex");
+		SSAOProg->addUniform("sceneNormalsTex");
+		SSAOProg->addUniform("sceneDepthTex");
+		SSAOProg->addUniform("uMode");
+		SSAOProg->addAttribute("vertPos");
 
-		ShadowProg->addUniform("P");
-		ShadowProg->addUniform("M");
-		ShadowProg->addUniform("V");
-		ShadowProg->addUniform("LS");
-		ShadowProg->addUniform("lightDir");
-		ShadowProg->addAttribute("vertPos");
-		ShadowProg->addAttribute("vertNor");
-		ShadowProg->addAttribute("vertTex");
-		ShadowProg->addUniform("Texture0");
-		ShadowProg->addUniform("shadowDepth");
-
-		DebugProg->addUniform("texBuf");
-		DebugProg->addAttribute("vertPos");
-
-		initShadow();
+		initGBuffer();
 	}
 
 
@@ -438,31 +484,11 @@ public:
 		CHECKED_GL_CALL(glUniformMatrix4fv(curShade->getUniform("P"), 1, GL_FALSE, value_ptr(Projection)));
 	}
 
-	/* TODO fix */
-	mat4 SetOrthoMatrix(shared_ptr<Program> curShade)
-	{
-		mat4 ortho = mat4(1.0);
-
-		// fill in the glUniform call to send to the right shader!
-
-		return ortho;
-	}
-
 	/* camera controls - do not change */
 	void SetView(shared_ptr<Program> curShade)
 	{
 		mat4 Cam = glm::lookAt(cameraPos, cameraLookAt, vec3(0, 1, 0));
 		CHECKED_GL_CALL(glUniformMatrix4fv(curShade->getUniform("V"), 1, GL_FALSE, value_ptr(Cam)));
-	}
-
-	/* TODO fix */
-	mat4 SetLightView(shared_ptr<Program> curShade, vec3 pos, vec3 LA, vec3 up)
-	{
-		mat4 Cam = mat4(1.0);
-
-		// fill in the glUniform call to send to the right shader!
-
-		return Cam;
 	}
 
 	/* model transforms */
@@ -488,28 +514,19 @@ public:
 	Draw the dog, sphere and ground plane
 	Textures can be turned on an off (as shadow map depth drawing does not need textures)
 	*/
-	void drawScene(shared_ptr<Program> shader, GLint texID, int TexOn)
+	void drawScene(shared_ptr<Program> shader, GLint texID)
 	{
-		if (TexOn)
-		{
-			texture0->bind(texID);
-		}
+		texture0->bind(texID);
 		//draw the dog mesh
 		SetModel(vec3(-1, 0, -5), 0, 0, 1, shader);
 		shape->draw(shader);
 
-		if (TexOn)
-		{
-			texture1->bind(texID);
-		}
+		texture1->bind(texID);
 		//draw the world sphere
 		SetModel(vec3(1, 0, -5), 0, 0, 1, shader);
 		world->draw(shader);
 
-		if (TexOn)
-		{
-			texture2->bind(texID);
-		}
+		texture2->bind(texID);
 
 		//draw the ground plane
 		SetModel(vec3(0, -1, 0), 0, 0, 1, shader);
@@ -518,7 +535,7 @@ public:
 		CHECKED_GL_CALL(glBindVertexArray(0));
 	}
 
-	void render_UpdateCamera()
+	void UpdateCamera()
 	{
 		float t1 = (float) glfwGetTime();
 
@@ -540,91 +557,64 @@ public:
 
 		cameraLookAt = cameraPos + forward;
 	}
-
-	glm::mat4 render_ShadowMap()
-	{
-		mat4 L;
-
-		// set up light's depth map
-		glViewport(0, 0, ShadowMapWidth, ShadowMapHeight);
-		glBindFramebuffer(GL_FRAMEBUFFER, ShadowMapFBO);
-		glClear(GL_DEPTH_BUFFER_BIT);
-		glCullFace(GL_FRONT);
-
-		// set up shadow shader
-		// render scene
-		DepthProg->bind();
-
-		// TODO you will need to fix these to return correct matrices
-		mat4 LO = SetOrthoMatrix(DepthProg);
-		mat4 LV = SetLightView(DepthProg, g_light, vec3(0, 0, 0), vec3(0, 1, 0));
-		drawScene(DepthProg, 0, 0);
-		DepthProg->unbind();
-		glCullFace(GL_BACK);
-
-		L = LO * LV;
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		return L;
-	}
-
+	
 	/* let's draw */
 	void render()
 	{
-		render_UpdateCamera();
-		mat4 L = render_ShadowMap();
+		UpdateCamera();
 
 
-		// Get current frame buffer size.
-		int width, height;
-		glfwGetFramebufferSize(windowManager->getHandle(), &width, &height);
-		glViewport(0, 0, width, height);
-		// Clear framebuffer.
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		// now render the scene like normal
+		CHECKED_GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, SceneFBO));
+		CHECKED_GL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
-		if (SHOW_LIGHT_COLOR)
+
+		SceneProg->bind();
+
+		CHECKED_GL_CALL(glUniform3f(SceneProg->getUniform("lightDir"), g_light.x, g_light.y, g_light.z));
+
+		SetProjectionMatrix(SceneProg);
+		SetView(SceneProg);
+
+		drawScene(SceneProg, SceneProg->getUniform("Texture0"));
+		SceneProg->unbind();
+
+
+		/* code to draw the light depth buffer */
+		// actually draw the light depth map
+		CHECKED_GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
+		CHECKED_GL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+
+		SSAOProg->bind();
+		CHECKED_GL_CALL(glActiveTexture(GL_TEXTURE0));
+		CHECKED_GL_CALL(glBindTexture(GL_TEXTURE_2D, SceneColorTexture));
+		CHECKED_GL_CALL(glUniform1i(SSAOProg->getUniform("sceneColorTex"), 0));
+
+		CHECKED_GL_CALL(glActiveTexture(GL_TEXTURE1));
+		CHECKED_GL_CALL(glBindTexture(GL_TEXTURE_2D, SceneNormalsTexture));
+		CHECKED_GL_CALL(glUniform1i(SSAOProg->getUniform("sceneNormalsTex"), 1));
+
+		CHECKED_GL_CALL(glActiveTexture(GL_TEXTURE2));
+		CHECKED_GL_CALL(glBindTexture(GL_TEXTURE_2D, SceneDepthTexture));
+		CHECKED_GL_CALL(glUniform1i(SSAOProg->getUniform("sceneDepthTex"), 2));
+
+
+		int PassMode = 0;
+
+		if (ShowSceneNormals)
 		{
-			// geometry style debug on light - test transforms, draw geometry from light
-			// perspective
-			DepthProgDebug->bind();
-			// render scene from light's point of view
-			SetOrthoMatrix(DepthProgDebug);
-			SetLightView(DepthProgDebug, g_light, vec3(0, 0, 0), vec3(0, 1, 0));
-			drawScene(DepthProgDebug, DepthProgDebug->getUniform("Texture0"), 1);
-			DepthProgDebug->unbind();
+			PassMode = 1;
 		}
-		else if (SHOW_LIGHT_DEPTH)
+		else if (ShowSceneDepth)
 		{
-			/* code to draw the light depth buffer */
-			// actually draw the light depth map
-			DebugProg->bind();
-			CHECKED_GL_CALL(glActiveTexture(GL_TEXTURE0));
-			CHECKED_GL_CALL(glBindTexture(GL_TEXTURE_2D, ShadowMapDepthTexture));
-			CHECKED_GL_CALL(glUniform1i(DebugProg->getUniform("texBuf"), 0));
-			CHECKED_GL_CALL(glBindVertexArray(QuadVertexArray));
-			CHECKED_GL_CALL(glDrawArrays(GL_TRIANGLES, 0, 6));
-			DebugProg->unbind();
+			PassMode = 2;
 		}
-		else
-		{
-			// now render the scene like normal
-			// set up shadow shader
-			ShadowProg->bind();
 
-			/* TODO: also set up light depth map */
+		CHECKED_GL_CALL(glUniform1i(SSAOProg->getUniform("uMode"), PassMode));
 
-			CHECKED_GL_CALL(glUniform3f(ShadowProg->getUniform("lightDir"), g_light.x, g_light.y, g_light.z));
-
-			// view/proj matrices
-			SetProjectionMatrix(ShadowProg);
-			SetView(ShadowProg);
-
-			// TODO: is there other uniform data that must be sent?
-
-			drawScene(ShadowProg, ShadowProg->getUniform("Texture0"), 1);
-			ShadowProg->unbind();
-		}
+		CHECKED_GL_CALL(glBindVertexArray(QuadVertexArray));
+		CHECKED_GL_CALL(glDrawArrays(GL_TRIANGLES, 0, 6));
+		SSAOProg->unbind();
 	}
 
 };

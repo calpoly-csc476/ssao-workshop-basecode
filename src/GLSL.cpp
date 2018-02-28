@@ -32,8 +32,10 @@ const char * errorString(GLenum err)
 		return "Stack underflow";
 	case GL_OUT_OF_MEMORY:
 		return "Out of memory";
+	case GL_INVALID_FRAMEBUFFER_OPERATION:
+		return "Invalid framebuffer operation";
 	default:
-		return "No error";
+		return "Unknown error";
 	}
 }
 
