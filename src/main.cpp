@@ -122,6 +122,8 @@ public:
 		{
 			cTheta += (float) (xpos - lastX) * cameraRotateSpeed;
 			cPhi -= (float) (ypos - lastY) * cameraRotateSpeed;
+			cPhi = glm::max(cPhi, -3.1415f / 2.f);
+			cPhi = glm::min(cPhi, 3.1415f / 2.f);
 		}
 
 		lastX = xpos;
@@ -598,7 +600,7 @@ public:
 
 		glm::vec3 up = glm::vec3(0, 1, 0);
 		glm::vec3 forward = glm::vec3(cos(cTheta) * cos(cPhi), sin(cPhi), sin(cTheta) * cos(cPhi));
-		glm::vec3 right = glm::cross(forward, up);
+		glm::vec3 right = glm::normalize(glm::cross(forward, up));
 
 		if (moveForward)
 			cameraPos += forward * cameraMoveSpeed * dT;
