@@ -16,7 +16,7 @@ void main()
 	gl_Position = P * V * M * vec4(vertPos.xyz, 1.0);
 
 	/* the normal in worldspace */
-	fWSNormal = (M * vec4(vertNor, 0.0)).xyz;
+	fWSNormal = (M * vec4(normalize(vertNor), 0.0)).xyz;
 
 	/* the normal in viewspace */
 	fVSNormal = (V * vec4(fWSNormal, 0.0)).xyz;

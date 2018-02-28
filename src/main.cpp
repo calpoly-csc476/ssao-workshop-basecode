@@ -43,8 +43,10 @@ public:
 	shared_ptr<Program> SSAOProg;
 
 	// Shapes
-	shared_ptr<Shape> world;
-	shared_ptr<Shape> shape;
+	shared_ptr<Shape> sphere;
+	shared_ptr<Shape> dog;
+	shared_ptr<Shape> dragon;
+	shared_ptr<Shape> stairs;
 
 	// Debug Settings
 	bool ShowSceneColor = false;
@@ -93,7 +95,7 @@ public:
 	bool moveBack = false;
 	bool moveLeft = false;
 	bool moveRight = false;
-	glm::vec3 cameraPos;
+	vec3 cameraPos = vec3(0, 0, 8);
 	float cameraMoveSpeed = 12.0f;
 
 
@@ -396,15 +398,25 @@ public:
 		glEnable(GL_DEPTH_TEST);
 
 		// Initialize mesh
-		shape = make_shared<Shape>();
-		shape->loadMesh(RESOURCE_DIR + "dog.obj");
-		shape->resize();
-		shape->init();
+		dog = make_shared<Shape>();
+		dog->loadMesh(RESOURCE_DIR + "dog.obj");
+		dog->resize();
+		dog->init();
 
-		world = make_shared<Shape>();
-		world->loadMesh(RESOURCE_DIR + "sphere.obj");
-		world->resize();
-		world->init();
+		sphere = make_shared<Shape>();
+		sphere->loadMesh(RESOURCE_DIR + "sphere.obj");
+		sphere->resize();
+		sphere->init();
+
+		dragon = make_shared<Shape>();
+		dragon->loadMesh(RESOURCE_DIR + "dragon10k.obj");
+		dragon->resize();
+		dragon->init();
+
+		stairs = make_shared<Shape>();
+		stairs->loadMesh(RESOURCE_DIR + "staircase.obj");
+		stairs->resize();
+		stairs->init();
 
 		// Initialize the GLSL programs
 
@@ -522,10 +534,12 @@ public:
 	}
 
 	/* model transforms */
-	void SetModel(vec3 trans, float rotY, float rotX, float sc, shared_ptr<Program> curS)
+	void SetModel(vec3 trans, float rotY, float sc, shared_ptr<Program> curS)
 	{
 		mat4 Trans = glm::translate(glm::mat4(1.0f), trans);
-		mat4 ctm = Trans;
+		mat4 Rot = glm::rotate(glm::mat4(1.0f), rotY, vec3(0, 1, 0));
+		mat4 Scale = glm::scale(glm::mat4(1.0f), vec3(sc));
+		mat4 ctm = Trans * Rot * Scale;
 		CHECKED_GL_CALL(glUniformMatrix4fv(curS->getUniform("M"), 1, GL_FALSE, value_ptr(ctm)));
 	}
 
@@ -546,17 +560,27 @@ public:
 	void drawScene(shared_ptr<Program> shader)
 	{
 		//draw the dog mesh
-		SetModel(vec3(-1, 0, -5), 0, 0, 1, shader);
+		SetModel(vec3(-1, -0.75f, 0), 0, 1, shader);
 		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.8f, 0.2f, 0.2f));
-		shape->draw(shader);
+		dog->draw(shader);
 
 		//draw the world sphere
-		SetModel(vec3(1, 0, -5), 0, 0, 1, shader);
+		SetModel(vec3(1, -1, 0), 0, 1, shader);
 		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.2f, 0.2f, 0.8f));
-		world->draw(shader);
+		sphere->draw(shader);
+
+		//draw the dragon mesh
+		SetModel(vec3(-1, 0.5f, -4), radians(90.f), 3, shader);
+		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.2f, 0.8f, 0.8f));
+		dragon->draw(shader);
+
+		//draw the stairs sphere
+		SetModel(vec3(1, 1, -9), radians(180.f), 3, shader);
+		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.8f, 0.6f, 0.2f));
+		stairs->draw(shader);
 
 		//draw the ground plane
-		SetModel(vec3(0, -1, 0), 0, 0, 1, shader);
+		SetModel(vec3(0, 0, 0), 0, 1, shader);
 		CHECKED_GL_CALL(glUniform3f(shader->getUniform("materialColor"), 0.2f, 0.8f, 0.2f));
 		CHECKED_GL_CALL(glBindVertexArray(GroundVertexArray));
 		CHECKED_GL_CALL(glDrawElements(GL_TRIANGLES, GroundIndexCount, GL_UNSIGNED_SHORT, 0));

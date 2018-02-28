@@ -20,5 +20,5 @@ void main()
 	float shading = max(dot(normalize(fWSNormal), normalize(lightDir)), 0.0);
 
 	outColor = (ambient + shading * diffuse) * materialColor;
-	outNormal = fVSNormal * 0.5 + 0.5;
+	outNormal = normalize(fVSNormal) * 0.5 + 0.5;
 }
