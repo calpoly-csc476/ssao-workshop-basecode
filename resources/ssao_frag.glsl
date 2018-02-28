@@ -21,12 +21,14 @@ float linearizeDepth(in float depth)
 	return (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));
 }
 
-vec3 reconstructViewspacePosition(vec2 texCoord)
+vec3 reconstructViewspacePosition(in vec2 texCoord)
 {
-	float depth = texture(sceneDepthTex, texCoord).r;
-	vec3 ndc = vec3(texCoord, depth) * 2.0 - vec3(1.0);
-	vec4 view = inverse(P) * vec4(ndc, 1.0);
-	return view.xyz / view.w;
+	return vec3(0.0);
+}
+
+vec3 viewspaceToNDC(in vec3 viewSpacePosition)
+{
+	return vec3(0.0);
 }
 
 
@@ -37,50 +39,8 @@ uniform vec3 sampleVectors[kernelSize];
 
 float calculateOcclusion(vec3 normal)
 {
-	vec3 fragPos = reconstructViewspacePosition(texCoord); // fragment position in view space
+	float occlusion = 1.0;
 
-	// Random vector (to orient hemisphere)
-	vec2 noiseScale = vec2(textureSize(sceneDepthTex, 0)) / textureSize(noiseTex, 0);
-	vec3 randomVec = vec3(texture(noiseTex, texCoord * noiseScale).xy, 0.0);
-
-	// Tangent to view transform
-	vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
-	vec3 bitangent = cross(normal, tangent);
-	mat3 TBN = mat3(tangent, bitangent, normal);
-
-	const float radius = 1.0; // radius of the hemisphere around fragment
-	// determines maximum distance of occluders, and depends on the units of your scene
-
-	// Run samples
-	float occlusion = 0.0;
-	for (int i = 0; i < kernelSize; ++i)
-	{
-		// Sample position in view space
-		vec3 sample = fragPos + (TBN * sampleVectors[i]) * radius;
-
-		// Transform sample to NDC (get texture coordinates)
-		vec4 offset = vec4(sample, 1.0);
-		offset = P * offset; // view to clip-space
-		offset.xy /= offset.w; // clip to ndc
-		offset.xy = offset.xy * 0.5 + 0.5; // transform to range 0.0 - 1.0
-
-		if (offset.x > 1.0 || offset.y > 1.0 || offset.x < 0.0 || offset.y < 0.0)
-		{
-			continue; // skip samples outside of framebuffer
-		}
-
-		vec3 samplePosition = reconstructViewspacePosition(offset.xy);
-
-		if (samplePosition.z >= sample.z) // check for crevice - occlusion check
-		{
-			if (abs(fragPos.z - samplePosition.z) < radius) // check within radius - range check
-			{
-				occlusion += 1.0; // distance weight governed by sample distribution
-			}
-		}
-	}
-
-	occlusion = 1.0 - (occlusion / float(kernelSize));
 	return occlusion;
 }
 
