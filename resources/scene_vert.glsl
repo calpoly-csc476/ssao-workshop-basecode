@@ -24,8 +24,8 @@ void main()
 	/* the position in world coordinates */
 	fPos = (M*vec4(vertPos, 1.0)).xyz;
 
-	/* the normal */
-	fragNor = (M*vec4(vertNor, 0.0)).xyz;
+	/* the normal in viewspace */
+	fragNor = (V * M * vec4(vertNor, 0.0)).xyz;
 
 	/* pass through the texture coordinates to be interpolated */
 	vTexCoord = vertTex;
