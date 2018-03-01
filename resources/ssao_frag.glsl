@@ -49,6 +49,33 @@ float calculateOcclusion(vec3 normal)
 {
 	float occlusion = 1.0;
 
+	vec3 fragPos = reconstructViewspacePosition(texCoord); // fragment position in view space
+
+	const float radius = 1.0; // radius of the hemisphere around fragment
+	// determines maximum distance of occluders, and depends on the units of your scene
+
+	// Run samples
+	for (int i = 0; i < kernelSize; ++i)
+	{
+		// Sample position in view space
+		vec3 samplePos = fragPos + sampleVectors[i] * radius;
+
+		// Transform sample to NDC (get texture coordinates)
+		vec3 offset = viewspaceToNDC(samplePos);
+		vec3 depthPos = reconstructViewspacePosition(offset.xy);
+
+		if (depthPos.z >= samplePos.z) // check for crevice - occlusion check
+		{
+			if (abs(fragPos.z - depthPos.z) < radius) // check within radius - range check
+			{
+				occlusion += 1.0; // distance weight governed by sample distribution
+				// so we just count the number of occluded samples
+			}
+		}
+	}
+
+	occlusion = 1.0 - (occlusion / float(kernelSize));
+
 	return occlusion;
 }
 
