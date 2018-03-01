@@ -23,7 +23,10 @@ float linearizeDepth(in float depth)
 
 vec3 reconstructViewspacePosition(in vec2 texCoord)
 {
-	return vec3(0.0);
+	float depth = texture(sceneDepthTex, texCoord).r; // read depth
+	vec3 ndc = vec3(texCoord, depth) * 2.0 - vec3(1.0); // convert to ndc
+	vec4 view = inverse(P) * vec4(ndc, 1.0); // transform to viewspace
+	return view.xyz / view.w; // homogenous divide
 }
 
 vec3 viewspaceToNDC(in vec3 viewSpacePosition)
