@@ -28,7 +28,12 @@ vec3 reconstructViewspacePosition(in vec2 texCoord)
 
 vec3 viewspaceToNDC(in vec3 viewSpacePosition)
 {
-	return vec3(0.0);
+	vec4 pos = vec4(viewSpacePosition, 1.0);
+	pos = P * pos; // view to clip-space
+	pos.xyz /= pos.w; // clip to ndc
+	pos.xyz = pos.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0
+
+	return pos.xyz;
 }
 
 
