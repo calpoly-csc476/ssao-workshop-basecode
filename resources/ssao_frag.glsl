@@ -51,6 +51,15 @@ float calculateOcclusion(vec3 normal)
 
 	vec3 fragPos = reconstructViewspacePosition(texCoord); // fragment position in view space
 
+	// Random vector (to orient hemisphere)
+	vec2 noiseScale = vec2(textureSize(sceneDepthTex, 0)) / textureSize(noiseTex, 0);
+	vec3 randomVec = vec3(texture(noiseTex, texCoord * noiseScale).xy, 0.0);
+
+	// Tangent to view transform
+	vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
+	vec3 bitangent = cross(normal, tangent);
+	mat3 TBN = mat3(tangent, bitangent, normal);
+
 	const float radius = 1.0; // radius of the hemisphere around fragment
 	// determines maximum distance of occluders, and depends on the units of your scene
 
@@ -58,7 +67,7 @@ float calculateOcclusion(vec3 normal)
 	for (int i = 0; i < kernelSize; ++i)
 	{
 		// Sample position in view space
-		vec3 samplePos = fragPos + sampleVectors[i] * radius;
+		vec3 samplePos = fragPos + (TBN * sampleVectors[i]) * radius;
 
 		// Transform sample to NDC (get texture coordinates)
 		vec3 offset = viewspaceToNDC(samplePos);
